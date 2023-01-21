@@ -1,0 +1,211 @@
+---
+title: 'Assignment #1'
+author: "Michael L. Davies"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::downcute:
+    self_contained: true
+    default_style: "light"
+    downcute_theme: "default"
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  message = FALSE, 
+  warning = FALSE)
+#output:  word_document
+
+# libraries
+library(tidyverse)
+library(tidymodels)
+library(dotwhisker) 
+theme_set(theme_minimal())
+```
+
+
+# Project Description and Context
+
+
+The data are global climate data and include the latitude and longitude of the climate station, its elevation, and the yearly average temperature in degrees Celsius.
+
+Raw Data File: `temperature.csv`
+
+```{r}
+temperature_df <- 
+  read_csv('data/temperature.csv') |> 
+  janitor::clean_names() |> 
+  select(cntry_name, name, year, elev, lat, lon) |> 
+  filter(elev != -999)
+
+temperature_df |> 
+  arrange(cntry_name) |> 
+  head() |> 
+  knitr::kable()
+```
+
+
+**Exercise Instructions:**
+
+The ultimate objective is to determine how well elevation predicts annual temperature in this region, and to use the regression model to predict annual temperature for Front Royal, VA.
+
+
+**Study Questions:**
+
+# Question 1.
+
+> What is the regression (beta) coefficient for elevation? (0.5 pts)
+
+* The model produces a beta = -0.00308
+
+```{r}
+# check for missing values
+# temperature_df |> 
+#         filter(is.na(elev))
+# 
+# temperature_df |> 
+#         filter(is.na(elev))
+
+# Specification for a linear regression model
+lm_spec <- linear_reg() |>
+  # setting mode just to be explicit. Not necessary here
+  set_mode("regression") |>
+  set_engine("lm")
+
+# Fit the model
+lm_fit <- lm_spec |>
+  fit(year ~ elev, data = temperature_df)
+
+lm_fit |> 
+  broom::tidy()
+
+# glance(lm_fit)
+```
+
+
+```{r}
+arrows <- 
+  tibble(
+    x1 = c(-0.002, -0.001),
+    x2 = c(-0.0028, -0.00001),
+    y1 = c(1.4, 1.4), 
+    y2 = c(1.1, 1.2)
+  )
+
+tidy(lm_fit) |> 
+  relabel_predictors(elev = "Elevation") |> 
+  dwplot(
+    dot_args = list(size = 4, color = "darkblue", alpha = .8),
+    whisker_args = list(size = 1, color = "darkblue", alpha = .7),
+    vline = geom_vline(xintercept = 0, 
+                       color = "red", 
+                       linetype = 2,
+                       size = 1)) +
+  annotate("text", 
+           x = -0.0015, 
+           y = 1.4, 
+           label = "The range of values that is likely to contain\n the true population value is far from zero") +
+  geom_curve(aes(x = -0.0024, y = 1.4, xend = -0.0028, yend = 1.1),
+    arrow = arrow(length = unit(0.08, "inch")), size = 1,
+    color = "gray20", curvature = 0.3) +
+  geom_curve(aes(x = -0.0006, y = 1.4, xend = -0.00001, yend = 1.1),
+    arrow = arrow(length = unit(0.08, "inch")), size = 1,
+    color = "gray20", curvature = -0.3) +
+  labs(
+    title = 'Plot of regression coefficient and 95% confidence interval',
+    subtitle = 'We can reject the (null) hypothesis that there is no relationship')
+```
+
+
+# Question 2. 
+
+> What is the predicted change in annual temperature, with a 100 m increase in elevation? (1 pt)
+
+* With a 100m **increase** in elevation, the model predicts 100 * -0.00308, or a **decrease** in mean annual temperature by 0.31$^\circ$C.
+
+
+# Question 3. 
+
+> How much variation in temperature is explained by elevation in the US? (1 pt)
+
+**Filtering data for US observations only**
+
+* Limiting the data to the U.S. and re-running the model obtains an R-Squared of 0.13. This suggests that, within the U.S., approximately 13% of the variance in mean annual temperatures can be explained by elevation.
+
+```{r}
+# subset to only US
+lm_fit_US <- lm_spec |>
+  fit(year ~ elev, 
+      data = temperature_df |> 
+        filter(cntry_name == "United States"))
+
+lm_fit_US |>
+  pluck("fit") |>
+  summary()
+```
+
+
+```{r}
+dwplot(
+  list(lm_fit, lm_fit_US),
+  vline = geom_vline(
+    xintercept = 0, 
+    color = "red", 
+    linetype = 2,
+    size = 1)) +
+  annotate(
+    "text", 
+    x = -0.0015, 
+    y = 1.4, 
+    label = "The range of values that is likely to contain\n the true population value is far from zero") +
+  labs(
+    title = 'Comparing the two models',
+    subtitle = 'Both indicate that we can reject the hypothesis\nthat there is no relationship')
+```
+
+
+# Question 4. 
+
+> Using ggplot, generate a scatterplot of temperature vs. elevation data. Include your fitted regression line and give appropriate labels for both axes. (1 pt)
+
+```{r}
+temperature_df |> 
+  filter(cntry_name == "United States") |> 
+  ggplot(aes(x = elev, y = year)) +
+  geom_point(
+    shape = "circle", 
+    size = 1.5, 
+    color = "#112446") +
+  geom_smooth(method = lm, se = FALSE) +
+  labs(x = "Elevation",
+       y = "Mean Average Temperature",
+       title = 'Is there a relationship between elevation and temperature?',
+       subtitle = 'Data from weather stations around the U.S.',
+       caption = 'Data were provided by Sven Lautenbach') +
+  theme_minimal()
+```
+
+
+# Question 5. 
+
+> Use your regression equation to predict the annual average temperature for Front Royal, VA, which is at an elevation of 170m. (1 pt)
+
+* This model predicts that the mean annual temperature in Front Royal, VA is 12.4 degrees Celsius with a 95% confidence interval of 12.1 to 12.6,
+
+```{r}
+# create prediction data and predict
+new_data = tibble(elev = 170)
+
+# point estimate
+predict(lm_fit_US, 
+        new_data = new_data)
+
+# confidence interval
+predict(lm_fit, 
+        new_data = new_data,
+        type = "conf_int")
+```
+
+
+
